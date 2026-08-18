@@ -249,6 +249,17 @@ function setStored<T>(key: string, val: T): void {
 
 type StoreListener = () => void;
 
+const firestoreAvailable = (): boolean => Boolean(db);
+
+const safeWrite = (callback: () => void): void => {
+  if (!firestoreAvailable()) return;
+  try {
+    callback();
+  } catch {
+    // no-op; app falls back to local storage when Firebase is unavailable
+  }
+};
+
 export class AppStore {
   private static listeners: Set<StoreListener> = new Set();
   private static isInitialized = false;
@@ -272,6 +283,11 @@ export class AppStore {
 
   // Initialize real-time Firebase Firestore synchronization
   static initFirebaseSync(): void {
+    if (!firestoreAvailable()) {
+      this.isInitialized = true;
+      return;
+    }
+
     if (this.isInitialized) return;
     this.isInitialized = true;
 
@@ -286,7 +302,9 @@ export class AppStore {
         } else {
           // Seed categories to Firestore
           SEED_CATEGORIES.forEach((cat) => {
-            setDoc(doc(db, 'categories', String(cat.id)), cleanForFirestore(cat)).catch(() => {});
+            safeWrite(() => {
+              setDoc(doc(db, 'categories', String(cat.id)), cleanForFirestore(cat)).catch(() => {});
+            });
           });
         }
       });
@@ -310,7 +328,9 @@ export class AppStore {
         } else {
           // Seed menu items
           SEED_MENU_ITEMS.forEach((item) => {
-            setDoc(doc(db, 'menu_items', String(item.id)), cleanForFirestore(item)).catch(() => {});
+            safeWrite(() => {
+              setDoc(doc(db, 'menu_items', String(item.id)), cleanForFirestore(item)).catch(() => {});
+            });
           });
         }
       });
@@ -325,7 +345,9 @@ export class AppStore {
         } else {
           // Seed tables
           SEED_TABLES.forEach((table) => {
-            setDoc(doc(db, 'tables', String(table.id)), cleanForFirestore(table)).catch(() => {});
+            safeWrite(() => {
+              setDoc(doc(db, 'tables', String(table.id)), cleanForFirestore(table)).catch(() => {});
+            });
           });
         }
       });
@@ -340,7 +362,9 @@ export class AppStore {
         } else {
           // Seed initial orders
           INITIAL_ORDERS.forEach((o) => {
-            setDoc(doc(db, 'orders', String(o.id)), cleanForFirestore(o)).catch(() => {});
+            safeWrite(() => {
+              setDoc(doc(db, 'orders', String(o.id)), cleanForFirestore(o)).catch(() => {});
+            });
           });
         }
       });
@@ -355,7 +379,9 @@ export class AppStore {
         } else {
           // Seed initial reservations
           INITIAL_RESERVATIONS.forEach((r) => {
-            setDoc(doc(db, 'reservations', String(r.id)), cleanForFirestore(r)).catch(() => {});
+            safeWrite(() => {
+              setDoc(doc(db, 'reservations', String(r.id)), cleanForFirestore(r)).catch(() => {});
+            });
           });
         }
       });
@@ -370,7 +396,9 @@ export class AppStore {
             this.notify();
           }
         } else {
-          setDoc(doc(db, 'settings', 'general'), cleanForFirestore(SEED_SETTINGS)).catch(() => {});
+          safeWrite(() => {
+            setDoc(doc(db, 'settings', 'general'), cleanForFirestore(SEED_SETTINGS)).catch(() => {});
+          });
         }
       });
 
@@ -382,7 +410,9 @@ export class AppStore {
           this.notify();
         } else {
           SEED_USERS.forEach((u) => {
-            setDoc(doc(db, 'users', String(u.id)), cleanForFirestore(u)).catch(() => {});
+            safeWrite(() => {
+              setDoc(doc(db, 'users', String(u.id)), cleanForFirestore(u)).catch(() => {});
+            });
           });
         }
       });
@@ -401,7 +431,9 @@ export class AppStore {
           this.notify();
         } else {
           DEFAULT_DISCOUNTS.forEach((d) => {
-            setDoc(doc(db, 'discounts', d.id), cleanForFirestore(d)).catch(() => {});
+            safeWrite(() => {
+              setDoc(doc(db, 'discounts', d.id), cleanForFirestore(d)).catch(() => {});
+            });
           });
         }
       });
@@ -418,8 +450,11 @@ export class AppStore {
   static saveCategories(cats: Category[]): void {
     setStored(STORAGE_KEYS.CATEGORIES, cats);
     this.notify();
+    if (!firestoreAvailable()) return;
     cats.forEach((c) => {
-      setDoc(doc(db, 'categories', String(c.id)), cleanForFirestore(c)).catch(() => {});
+      safeWrite(() => {
+        setDoc(doc(db, 'categories', String(c.id)), cleanForFirestore(c)).catch(() => {});
+      });
     });
   }
 
@@ -434,9 +469,11 @@ export class AppStore {
     cats.push(newCat);
     this.saveCategories(cats);
 
-    setDoc(doc(db, 'categories', String(newCat.id)), cleanForFirestore(newCat)).catch((e) =>
-      console.error('Firestore add category error:', e)
-    );
+    safeWrite(() => {
+      setDoc(doc(db, 'categories', String(newCat.id)), cleanForFirestore(newCat)).catch((e) =>
+        console.error('Firestore add category error:', e)
+      );
+    });
 
     return newCat;
   }
@@ -448,8 +485,11 @@ export class AppStore {
     cats[idx] = { ...cats[idx], ...updates };
     this.saveCategories(cats);
 
-    updateDoc(doc(db, 'categories', String(id)), cleanForFirestore(updates)).catch(() => {
-      setDoc(doc(db, 'categories', String(id)), cleanForFirestore(cats[idx])).catch(() => {});
+    if (!firestoreAvailable()) return cats[idx];
+    safeWrite(() => {
+      updateDoc(doc(db, 'categories', String(id)), cleanForFirestore(updates)).catch(() => {
+        setDoc(doc(db, 'categories', String(id)), cleanForFirestore(cats[idx])).catch(() => {});
+      });
     });
 
     return cats[idx];
@@ -461,7 +501,9 @@ export class AppStore {
     cats = cats.filter((c) => c.id !== id);
     if (cats.length !== prevLen) {
       this.saveCategories(cats);
-      deleteDoc(doc(db, 'categories', String(id))).catch(() => {});
+      safeWrite(() => {
+        deleteDoc(doc(db, 'categories', String(id))).catch(() => {});
+      });
       return true;
     }
     return false;
@@ -474,7 +516,9 @@ export class AppStore {
       if (item.categoryId === oldCatId) {
         item.categoryId = newCatId;
         count++;
-        updateDoc(doc(db, 'menu_items', String(item.id)), { categoryId: newCatId }).catch(() => {});
+        safeWrite(() => {
+          updateDoc(doc(db, 'menu_items', String(item.id)), { categoryId: newCatId }).catch(() => {});
+        });
       }
     });
     if (count > 0) {
@@ -509,10 +553,12 @@ export class AppStore {
     items.push(newItem);
     this.saveMenuItems(items);
 
-    // Sync to Firestore
-    setDoc(doc(db, 'menu_items', String(newItem.id)), cleanForFirestore(newItem)).catch((e) =>
-      console.error('Firestore add error:', e)
-    );
+    safeWrite(() => {
+      // Sync to Firestore
+      setDoc(doc(db, 'menu_items', String(newItem.id)), cleanForFirestore(newItem)).catch((e) =>
+        console.error('Firestore add error:', e)
+      );
+    });
 
     return newItem;
   }
@@ -524,9 +570,12 @@ export class AppStore {
     items[idx] = { ...items[idx], ...updates };
     this.saveMenuItems(items);
 
+    if (!firestoreAvailable()) return items[idx];
     // Sync to Firestore
-    updateDoc(doc(db, 'menu_items', String(id)), cleanForFirestore(updates)).catch(() => {
-      setDoc(doc(db, 'menu_items', String(id)), cleanForFirestore(items[idx])).catch(() => {});
+    safeWrite(() => {
+      updateDoc(doc(db, 'menu_items', String(id)), cleanForFirestore(updates)).catch(() => {
+        setDoc(doc(db, 'menu_items', String(id)), cleanForFirestore(items[idx])).catch(() => {});
+      });
     });
 
     return items[idx];
@@ -538,7 +587,9 @@ export class AppStore {
     items = items.filter((i) => i.id !== id);
     if (items.length !== prevLen) {
       this.saveMenuItems(items);
-      deleteDoc(doc(db, 'menu_items', String(id))).catch(() => {});
+      safeWrite(() => {
+        deleteDoc(doc(db, 'menu_items', String(id))).catch(() => {});
+      });
       return true;
     }
     return false;
@@ -564,8 +615,11 @@ export class AppStore {
     }
     this.saveTables(tables);
 
+    if (!firestoreAvailable()) return tables[idx];
     // Sync table state to Firestore
-    setDoc(doc(db, 'tables', String(tableId)), cleanForFirestore(tables[idx])).catch(() => {});
+    safeWrite(() => {
+      setDoc(doc(db, 'tables', String(tableId)), cleanForFirestore(tables[idx])).catch(() => {});
+    });
 
     return tables[idx];
   }
@@ -641,10 +695,12 @@ export class AppStore {
     orders.unshift(newOrder);
     this.saveOrders(orders);
 
-    // Save to Firestore with clean sanitization
-    setDoc(doc(db, 'orders', String(newOrder.id)), cleanForFirestore(newOrder)).catch((e) =>
-      console.error('Firestore create order error:', e)
-    );
+    safeWrite(() => {
+      // Save to Firestore with clean sanitization
+      setDoc(doc(db, 'orders', String(newOrder.id)), cleanForFirestore(newOrder)).catch((e) =>
+        console.error('Firestore create order error:', e)
+      );
+    });
 
     // Deduct stock in items & Firestore
     const items = this.getMenuItems();
@@ -674,9 +730,11 @@ export class AppStore {
     order.status = status;
     this.saveOrders(orders);
 
-    // Firestore sync
-    updateDoc(doc(db, 'orders', String(orderId)), { status }).catch(() => {
-      setDoc(doc(db, 'orders', String(orderId)), cleanForFirestore(order)).catch(() => {});
+    safeWrite(() => {
+      // Firestore sync
+      updateDoc(doc(db, 'orders', String(orderId)), { status }).catch(() => {
+        setDoc(doc(db, 'orders', String(orderId)), cleanForFirestore(order)).catch(() => {});
+      });
     });
 
     // If order finished or cancelled, free table
@@ -727,10 +785,12 @@ export class AppStore {
     resList.unshift(newRes);
     this.saveReservations(resList);
 
-    // Firestore sync
-    setDoc(doc(db, 'reservations', String(newRes.id)), cleanForFirestore(newRes)).catch((e) =>
-      console.error('Firestore create reservation error:', e)
-    );
+    safeWrite(() => {
+      // Firestore sync
+      setDoc(doc(db, 'reservations', String(newRes.id)), cleanForFirestore(newRes)).catch((e) =>
+        console.error('Firestore create reservation error:', e)
+      );
+    });
 
     return newRes;
   }
@@ -742,9 +802,11 @@ export class AppStore {
     res.status = status;
     this.saveReservations(resList);
 
-    // Firestore sync
-    updateDoc(doc(db, 'reservations', String(id)), { status }).catch(() => {
-      setDoc(doc(db, 'reservations', String(id)), cleanForFirestore(res)).catch(() => {});
+    safeWrite(() => {
+      // Firestore sync
+      updateDoc(doc(db, 'reservations', String(id)), { status }).catch(() => {
+        setDoc(doc(db, 'reservations', String(id)), cleanForFirestore(res)).catch(() => {});
+      });
     });
 
     if (status === 'confirmed' && res.tableId) {
@@ -769,7 +831,9 @@ export class AppStore {
   static saveSettings(settings: StoreSettings): void {
     setStored(STORAGE_KEYS.SETTINGS, settings);
     this.notify();
-    setDoc(doc(db, 'settings', 'general'), cleanForFirestore(settings)).catch(() => {});
+    safeWrite(() => {
+      setDoc(doc(db, 'settings', 'general'), cleanForFirestore(settings)).catch(() => {});
+    });
   }
 
   // Users and Auth State
@@ -851,9 +915,11 @@ export class AppStore {
     };
     discounts.push(newDiscount);
     this.saveDiscounts(discounts);
-    setDoc(doc(db, 'discounts', id), cleanForFirestore(newDiscount)).catch((e) =>
-      console.error('Firestore save discount error:', e)
-    );
+    safeWrite(() => {
+      setDoc(doc(db, 'discounts', id), cleanForFirestore(newDiscount)).catch((e) =>
+        console.error('Firestore save discount error:', e)
+      );
+    });
     return newDiscount;
   }
 
@@ -863,17 +929,21 @@ export class AppStore {
     if (idx === -1) return null;
     discounts[idx] = { ...discounts[idx], ...updates };
     this.saveDiscounts(discounts);
-    updateDoc(doc(db, 'discounts', id), cleanForFirestore(updates)).catch((e) =>
-      console.error('Firestore update discount error:', e)
-    );
+    safeWrite(() => {
+      updateDoc(doc(db, 'discounts', id), cleanForFirestore(updates)).catch((e) =>
+        console.error('Firestore update discount error:', e)
+      );
+    });
     return discounts[idx];
   }
 
   static deleteDiscount(id: string): void {
     const discounts = this.getDiscounts().filter((d) => d.id !== id);
     this.saveDiscounts(discounts);
-    deleteDoc(doc(db, 'discounts', id)).catch((e) =>
-      console.error('Firestore delete discount error:', e)
-    );
+    safeWrite(() => {
+      deleteDoc(doc(db, 'discounts', id)).catch((e) =>
+        console.error('Firestore delete discount error:', e)
+      );
+    });
   }
 }

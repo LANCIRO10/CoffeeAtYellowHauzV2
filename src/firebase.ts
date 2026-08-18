@@ -2,13 +2,27 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import firebaseConfig from '../firebase-applet-config.json';
+import { normalizeFirebaseConfig, isFirebaseConfigValid } from './firebaseConfig';
 
-// Initialize Firebase App instance
-export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+const normalizedConfig = normalizeFirebaseConfig(firebaseConfig);
+const hasValidFirebaseConfig = isFirebaseConfigValid(normalizedConfig);
 
-// Use the designated database ID if provided, otherwise default
-export const db = firebaseConfig.firestoreDatabaseId
-  ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
-  : getFirestore(app);
+if (!hasValidFirebaseConfig) {
+  console.warn(
+    'Firebase configuration is missing or incomplete. Firestore/Auth features will be disabled until a valid Firebase web config is provided.'
+  );
+}
 
-export const auth = getAuth(app);
+const safeFirebaseConfig = hasValidFirebaseConfig ? normalizedConfig : {};
+
+export const app = hasValidFirebaseConfig
+  ? getApps().length === 0
+    ? initializeApp(safeFirebaseConfig)
+    : getApp()
+  : null;
+
+export const db = app ? (normalizedConfig.firestoreDatabaseId ? getFirestore(app, normalizedConfig.firestoreDatabaseId) : getFirestore(app)) : null;
+
+export const auth = app ? getAuth(app) : null;
+
+export const isFirebaseEnabled = Boolean(app && db && auth);
